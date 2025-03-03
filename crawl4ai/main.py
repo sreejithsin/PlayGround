@@ -1,10 +1,17 @@
 import asyncio
 import json
-from crawl4ai import AsyncWebCrawler, BrowserConfig, CrawlerRunConfig, JsonCssExtractionStrategy, CacheMode
+from pydantic import BaseModel, Field
+from crawl4ai import AsyncWebCrawler, BrowserConfig, CrawlerRunConfig, JsonCssExtractionStrategy, CacheMode, LLMExtractionStrategy
+
+
+class ProductData(BaseModel):
+    name: str
+    price: str
 
 async def main():
 
     session_name = "amazon_mobile_phone";
+    use_llm = True
 
     # Data Schema
     schema = {
@@ -24,6 +31,22 @@ async def main():
         verbose=True,
     )
 
+    # LLM Extraction Strategy
+    llm_strategy = LLMExtractionStrategy(
+            provider="openai/text-completion",
+            api_token="sk-YOUR_API_KEY",
+            schema=ProductData.schema_json(),
+            extraction_type="schema",
+            instruction="Extract product name and price from the content.",
+            api_base="http://localhost:1234/v1",
+            model="qwen2.5-coder-14b-instruct",  
+            chunk_token_threshold=1000,
+            overlap_rate=0.0,
+            apply_chunking=True,
+            input_format="markdown",
+            extra_args={"temperature": 0.0, "max_tokens": 1000},        
+        )    
+
     async with AsyncWebCrawler(config=browser_config) as crawler: 
 
         # Pagination JavaScript
@@ -38,7 +61,7 @@ async def main():
             crawler_config = CrawlerRunConfig(
                 js_code=load_nextpage_js if page > 0 else None,
                 js_only=True if page > 0 else False,
-                extraction_strategy=JsonCssExtractionStrategy(schema),
+                extraction_strategy= llm_strategy if use_llm else JsonCssExtractionStrategy(schema),
                 session_id=session_name,
                 wait_for=wait_for_code if page > 0 else None,
                 cache_mode=CacheMode.BYPASS
