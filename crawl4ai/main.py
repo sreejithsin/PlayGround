@@ -24,13 +24,6 @@ async def main():
         verbose=True,
     )
 
-    crawler_config = CrawlerRunConfig(
-        cache_mode=CacheMode.BYPASS,
-        extraction_strategy=JsonCssExtractionStrategy(schema),
-        session_id=session_name
-    )
-
-    # Run the crawler
     async with AsyncWebCrawler(config=browser_config) as crawler: 
 
         # Pagination JavaScript
