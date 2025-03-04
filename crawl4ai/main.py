@@ -1,34 +1,39 @@
+import os
 import asyncio
 import json
-from pydantic import BaseModel, Field
-from crawl4ai import AsyncWebCrawler, BrowserConfig, CrawlerRunConfig, JsonCssExtractionStrategy, CacheMode, LLMExtractionStrategy
-import os
+from pydantic import BaseModel
 from dotenv import load_dotenv
+from crawl4ai import AsyncWebCrawler, BrowserConfig, CrawlerRunConfig, JsonCssExtractionStrategy, CacheMode, LLMExtractionStrategy
 
 
+# Pydantic model for data schema, for LLM Extraction Strategy
 class ProductData(BaseModel):
     name: str
     price: str
 
+# Data Schema for CSS Extraction Strategy
+schema = {
+    "name": "Product Block",
+    "baseSelector": 'a.a-link-normal',
+    "fields": [
+        {"name": "title", "selector": "h2", "type": "text"},
+        {"name": "price", "selector": "span.a-price", "type": "text"},
+    ]        
+}    
+
 async def main():
+
+    # Product listings page which we need to scrape
+    amazon_product_URL = "https://www.amazon.com/s?k=mobile+phone&crid=370OJ37JU1BF1&sprefix=mobile+pho%2Caps%2C353&ref=nb_sb_noss_2";
 
     # Load the .env file
     load_dotenv()
 
-    session_name = "amazon_mobile_phone"
-    use_llm = True
-
-    # Data Schema
-    schema = {
-        "name": "Product Block",
-        "baseSelector": 'a.a-link-normal',
-        "fields": [
-            {"name": "title", "selector": "h2", "type": "text"},
-            {"name": "price", "selector": "span.a-price", "type": "text"},
-        ]        
-    }
+    # True for LLM Extraction, False for CSS Extraction
+    use_llm = False
 
     # Browser configuration
+    session_name = "amazon_mobile_phone"
     browser_config = BrowserConfig(
         headless=False,
         viewport_width=1280,
@@ -66,10 +71,12 @@ async def main():
             extra_args={"temperature": 0.1, "max_tokens": 800},        
         )         
 
+    # Init the web crawler with the browser configuration
     async with AsyncWebCrawler(config=browser_config) as crawler: 
 
         # Pagination JavaScript
-        load_nextpage_js = ["document.getElementsByClassName('s-pagination-item s-pagination-next')[0].click();"]            
+        load_nextpage_js = ["document.getElementsByClassName('s-pagination-item s-pagination-next')[0].click();"]    
+
         # Wait for 
         wait_for_code = """() => document.getElementsByClassName('s-main-slot s-result-list s-search-results sg-row')[0].childElementCount > 10"""
 
@@ -78,8 +85,8 @@ async def main():
 
             # Crawler configuration
             crawler_config = CrawlerRunConfig(
-                js_code=load_nextpage_js if page > 0 else None,
                 js_only=True if page > 0 else False,
+                js_code=load_nextpage_js if page > 0 else None,
                 extraction_strategy= llm_strategy if use_llm else JsonCssExtractionStrategy(schema),
                 css_selector='div[role="listitem"]',
                 session_id=session_name,
@@ -91,7 +98,7 @@ async def main():
 
             # Crawl
             result = await crawler.arun(
-                url="https://www.amazon.com/s?k=mobile+phone&crid=370OJ37JU1BF1&sprefix=mobile+pho%2Caps%2C353&ref=nb_sb_noss_2",
+                url=amazon_product_URL,
                 config=crawler_config
             )
 
