@@ -2,6 +2,8 @@ import asyncio
 import json
 from pydantic import BaseModel, Field
 from crawl4ai import AsyncWebCrawler, BrowserConfig, CrawlerRunConfig, JsonCssExtractionStrategy, CacheMode, LLMExtractionStrategy
+import os
+from dotenv import load_dotenv
 
 
 class ProductData(BaseModel):
@@ -10,7 +12,10 @@ class ProductData(BaseModel):
 
 async def main():
 
-    session_name = "amazon_mobile_phone";
+    # Load the .env file
+    load_dotenv()
+
+    session_name = "amazon_mobile_phone"
     use_llm = True
 
     # Data Schema
@@ -33,9 +38,23 @@ async def main():
 
     # LLM Extraction Strategy
     llm_strategy = LLMExtractionStrategy(
+            provider="openai/gpt-4o-mini",
+            api_token=os.getenv("OPENAI_API_KEY"),
+            schema=ProductData.model_json_schema(),
+            extraction_type="schema",
+            instruction="Extract product name and price from the content.",
+            chunk_token_threshold=1000,
+            overlap_rate=0.0,
+            apply_chunking=True,
+            input_format="markdown",
+            extra_args={"temperature": 0.1, "max_tokens": 800},        
+        )    
+
+    # Local LLM Extraction Strategy
+    # Chunking does not seem to work well with local LLM
+    local_llm_strategy = LLMExtractionStrategy(
             provider="openai/text-completion",
-            api_token="sk-YOUR_API_KEY",
-            schema=ProductData.schema_json(),
+            schema=ProductData.model_json_schema(),
             extraction_type="schema",
             instruction="Extract product name and price from the content.",
             api_base="http://localhost:1234/v1",
@@ -44,8 +63,8 @@ async def main():
             overlap_rate=0.0,
             apply_chunking=True,
             input_format="markdown",
-            extra_args={"temperature": 0.0, "max_tokens": 1000},        
-        )    
+            extra_args={"temperature": 0.1, "max_tokens": 800},        
+        )         
 
     async with AsyncWebCrawler(config=browser_config) as crawler: 
 
@@ -62,9 +81,12 @@ async def main():
                 js_code=load_nextpage_js if page > 0 else None,
                 js_only=True if page > 0 else False,
                 extraction_strategy= llm_strategy if use_llm else JsonCssExtractionStrategy(schema),
+                css_selector='div[role="listitem"]',
                 session_id=session_name,
                 wait_for=wait_for_code if page > 0 else None,
-                cache_mode=CacheMode.BYPASS
+                cache_mode=CacheMode.BYPASS,
+                exclude_external_links=True,
+                exclude_social_media_links=True
             )
 
             # Crawl
